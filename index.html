@@ -352,7 +352,11 @@ function submit(){
     return;
   }
   if (ENDPOINT) {
-    fetch(ENDPOINT, { method: 'POST', body: JSON.stringify(answers) })
+    fetch(ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(answers)
+    })
       .then(() => go(QUESTIONS.length))
       .catch(() => { alert('제출 중 문제가 생겼어요. 인터넷 연결을 확인하고 한 번만 다시 시도해주세요.'); go(QUESTIONS.length - 1); });
     return;
