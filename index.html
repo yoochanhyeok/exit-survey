@@ -117,6 +117,8 @@
   .done .ring{width:72px;height:72px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;margin-bottom:16px}
   .done h2{margin-bottom:2px}
   .done p{font-size:14.5px;color:var(--muted)}
+  .done .closing-phrase{white-space:nowrap}
+  @media (max-width:560px){.done .closing-phrase{display:block}}
   .selcount{font-size:13px;font-weight:600;color:var(--accent);margin-top:12px;font-variant-numeric:tabular-nums}
 </style>
 
@@ -138,18 +140,21 @@ const FLOW = [
   {id:'ten', step:'1단계 · 기본 정보', title:'회사에 재직한 기간은 얼마나 되었나요?', type:'choice',
    options:['3년 미만','3년~5년','5년 이상']},
   {id:'q1', step:'1단계 · 기본 정보', title:'퇴사 후에는 어떤 계획을 갖고 계세요?', type:'choice',
-   options:['이직','학업','창업','휴식','개인 사유'], etc:true},
+   options:['이직','학업','창업','휴식'], etc:true},
   {id:'q2', step:'1단계 · 기본 정보', titleClass:'tipping-title', title:'<span class="title-line">퇴사를 결정하는 과정에서 여러 이유가</span><span class="title-line">있었겠지만, 최종 마음을 굳히는 데</span><span class="title-line">가장 크게 작용한 한 가지는 무엇이었나요?</span>', type:'choice',
-   options:['보상','직무','커리어','워라밸','관리자','문화','비젼'], etc:true},
-  {id:'experience_intro', step:'다음 화면 안내', title:'이제 회사에서 일하셨던 경험을 여쭤보려 합니다.', type:'info',
+   options:['보상','직무','커리어','워라밸','관리자','문화'], etc:true},
+  {id:'experience_intro', step:'2단계 다음 화면 안내', title:'이제 회사에서 일하셨던 경험을 여쭤보려 합니다.', type:'info',
    body:['다음 문항은 일하는 동안 어떤 경험이 퇴사 결정에 영향을 주었는지 더 정확히 이해하기 위한 질문이에요.','재직 기간 동안 전반적인 느낌과 가장 가까운 점수를 선택해주세요.']},
   {id:'q3', step:'2단계 · 회사생활 경험', title:'업무를 수행하는 동안, 내가 맡아야 할 역할과 회사가 나에게 기대하는 결과가 무엇인지 충분히 이해할 수 있었나요?', type:'scale'},
   {id:'q4', step:'2단계 · 회사생활 경험', title:'업무 과정에서 관리자가 내 의견과 노력을 존중하고 있다고 느꼈나요?', type:'scale'},
   {id:'q5', step:'2단계 · 회사생활 경험', title:'주어진 업무량과 일하는 방식은 건강과 일상을 해치지 않고 지속할 수 있는 수준이었나요?', type:'scale'},
   {id:'q6', step:'2단계 · 회사생활 경험', title:'퇴사를 결정하기 전, 회사가 아래와 같은 변화를 제안하거나 실제로 지원했다면 퇴사를 다시 고민해볼 가능성이 있었던 항목은 무엇인가요?',
-   hint:'최대 2개까지 선택해주세요.', type:'multi', max:2,
-   options:['보상 및 복리후생','커리어 성장 기회','업무량 및 방식 조정','동료 및 관리자 관계 개선','조직 문화 변화'], etc:true},
-  {id:'freeform_intro', step:'다음 화면 안내', title:'회사에서 겪은 경험과 앞으로 개선되었으면 하는 점을 편하게 들려주세요.', type:'info', body:[]},
+   hint:'2개를 선택해주세요.', type:'multi', min:2, max:2,
+   options:['보상 및 복리후생','커리어 성장 기회','업무량 및 방식 조정','동료 및 관리자 관계 개선','조직 문화 변화'], etc:true,
+   // 기존 응답 및 대시보드와의 집계를 위해 저장값은 유지하고 표시 문구만 변경합니다.
+   optionLabels:{'동료 및 관리자 관계 개선':'관리자 및 동료 관계 개선'}},
+  {id:'freeform_intro', step:'3단계 다음 화면 안내', title:'회사에서 겪은 경험과 앞으로 개선되었으면 하는 점을 편하게 들려주세요.', type:'info',
+   body:['다음 두 질문에서는 재직 중 아쉽거나 힘들었던 점과 회사가 먼저 바꾸었으면 하는 점을 여쭤볼게요.','길게 쓰거나 문장을 잘 정리하지 않으셔도 괜찮아요. 떠오르는 경험이나 생각을 짧게라도 편하게 들려주세요.','본인이나 다른 분을 알아볼 수 있는 이름 등은 적지 않으셔도 돼요. 마지막에는 지인에게 회사를 추천하고 싶으신지도 여쭤볼게요.']},
   {id:'q7', step:'3단계 · 자유의견', title:'재직 기간 동안 가장 아쉽거나 힘들었던 점은 무엇이었나요?', type:'text'},
   {id:'q8', step:'3단계 · 자유의견', title:'회사가 가장 먼저 바꿔야 할 한 가지는 무엇이라고 생각하시나요?', type:'text'},
   {id:'q9', step:'3단계 · 자유의견', title:'키움증권을 지인에게 추천하고 싶으신가요?', type:'ox'},
@@ -331,6 +336,8 @@ function renderMulti(q){
   const cnt = el('p','selcount');
   let next = null;
   let etcInp = null;
+  const canContinue = () => sel.size >= (q.min || 1) && sel.size <= q.max &&
+    (!sel.has('__etc') || Boolean(etcInp && etcInp.value.trim()));
   const persist = () => {
     const out = [];
     sel.forEach(v => { if(v!=='__etc') out.push(v); });
@@ -339,12 +346,12 @@ function renderMulti(q){
   };
   const refresh = () => {
     cnt.textContent = sel.size + ' / ' + q.max + ' 선택됨';
-    if (next) next.disabled = sel.size === 0;
+    if (next) next.disabled = !canContinue();
     persist();
   };
   const mk = label => { const b=el('button','opt','<span>'+label+'</span><span class="mark"></span>'); box.append(b); return b; };
   q.options.forEach(label => {
-    const b = mk(label);
+    const b = mk((q.optionLabels && q.optionLabels[label]) || label);
     if (sel.has(label)) b.classList.add('on');
     b.addEventListener('click', () => {
       if (sel.has(label)) { sel.delete(label); b.classList.remove('on'); }
@@ -364,10 +371,11 @@ function renderMulti(q){
       else if (sel.size < q.max) { b.classList.add('on'); row.style.display='flex'; sel.add('__etc'); etcInp.focus(); }
       refresh();
     });
-    etcInp.addEventListener('input', persist);
+    etcInp.addEventListener('input', refresh);
   }
   $screen.append(box, cnt);
   next = appendNav(() => {
+    if (!canContinue()) return;
     const out = [];
     sel.forEach(v => { if(v!=='__etc') out.push(v); });
     if (sel.has('__etc')) {
@@ -375,7 +383,7 @@ function renderMulti(q){
       out.push('기타: '+etcInp.value.trim());
     }
     answers[q.id] = out; go(idx+1);
-  }, '다음', sel.size === 0);
+  }, '다음', true);
   refresh();
 }
 
@@ -433,7 +441,7 @@ function renderDone(){
   d.append(
     el('div','ring','<svg width="30" height="30" viewBox="0 0 30 30" fill="none"><path d="M6 15.5 12.5 22 24 9" stroke="#2E6B5A" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'),
     el('h2',null,'제출되었어요'),
-    el('p',null,'귀한 시간을 내어 솔직한 이야기 들려주셔서 감사합니다.<br>남겨 주신 의견은 더 나은 회사를 만드는 데 소중히 활용하겠습니다.'),
+    el('p',null,'귀한 시간을 내어 솔직한 이야기 들려주셔서 감사합니다.<br>남겨 주신 의견은 더 나은 회사를 만드는 데 <span class="closing-phrase">소중히 활용하겠습니다.</span>'),
   );
   $screen.append(d);
 }
