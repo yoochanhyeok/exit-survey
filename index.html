@@ -34,6 +34,11 @@
   .back:hover{background:var(--accent-soft);color:var(--accent-deep)}
   .back:focus-visible,.opt:focus-visible,.btn:focus-visible,.dot:focus-visible,.oxcard:focus-visible,.select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .count{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:0;font-variant-numeric:tabular-nums}
+  .topbar-actions{display:flex;align-items:center;gap:16px;min-width:0}
+  .restart{border:0;background:none;font:inherit;font-size:13px;color:var(--muted);padding:10px 0;cursor:pointer;white-space:nowrap}
+  .restart:hover{color:var(--accent-deep)}
+  .restart:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .draft-warning{font-size:13px;color:var(--danger);margin-bottom:16px;word-break:keep-all}
   .screen{flex:1;display:flex;flex-direction:column;padding-bottom:40px;animation:rise .35s cubic-bezier(.2,.7,.3,1)}
   @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
   @media (prefers-reduced-motion:reduce){.screen{animation:none}.progress i{transition:none}}
@@ -132,8 +137,12 @@
     <button class="back" id="backBtn" aria-label="이전 질문으로">
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M12.5 4 6.5 10l6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
-    <span class="count" id="count"></span>
+    <div class="topbar-actions">
+      <span class="count" id="count"></span>
+      <button class="restart" id="restartBtn" type="button" hidden>처음부터</button>
+    </div>
   </div>
+  <p class="draft-warning" id="draftWarning" role="status" hidden>이 브라우저에서는 임시 저장을 사용할 수 없어요. 페이지를 닫으면 작성 내용이 사라질 수 있어요.</p>
   <div id="screen" class="screen"></div>
 </div>
 
@@ -172,12 +181,125 @@ const reasonDrafts = {};
 let idx = -1;
 let submitting = false;
 let submissionId = '';
+const DRAFT_KEY = 'kiwoom-exit-survey:draft';
+const DRAFT_TTL = 24 * 60 * 60 * 1000;
+let completed = false;
 
 const $screen = document.getElementById('screen');
 const $bar = document.getElementById('bar');
 const $count = document.getElementById('count');
 const $back = document.getElementById('backBtn');
+const $restart = document.getElementById('restartBtn');
+const $draftWarning = document.getElementById('draftWarning');
 $back.addEventListener('click', () => go(idx - 1));
+$restart.addEventListener('click', restartSurvey);
+// Save after each field's own handler has updated its answer, including before Next.
+['input','change','click'].forEach(event => $screen.addEventListener(event, saveDraft));
+window.addEventListener('pagehide', saveDraft);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') saveDraft();
+});
+window.addEventListener('pageshow', event => {
+  if (event.persisted && !submitting && !completed) {
+    clearAnswers();
+    go(restoreDraft());
+  }
+});
+window.addEventListener('storage', event => {
+  if (event.key === DRAFT_KEY && event.newValue === null && !submitting && !completed) {
+    clearAnswers();
+    go(-1);
+  }
+});
+
+function clearAnswers(){
+  Object.keys(answers).forEach(key => delete answers[key]);
+  Object.keys(reasonDrafts).forEach(key => delete reasonDrafts[key]);
+  submissionId = '';
+}
+
+function removeDraft(){
+  try { localStorage.removeItem(DRAFT_KEY); return true; }
+  catch (_) { return false; }
+}
+
+function saveDraft(){
+  if (completed || idx >= FLOW.length || (idx < 0 && !Object.keys(answers).length)) return;
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      version:1, savedAt:Date.now(), step:idx < 0 ? 'intro' : FLOW[idx].id,
+      answers, reasonDrafts, submissionId
+    }));
+    $draftWarning.hidden = true;
+  } catch (_) { $draftWarning.hidden = false; }
+}
+
+function isSavedChoice(q, value){
+  return typeof value === 'string' && (q.options.includes(value) || (q.etc && value.startsWith('기타:')));
+}
+
+function isAnswered(q){
+  const value = answers[q.id];
+  if (q.type === 'info' || q.type === 'text') return true;
+  if (q.type === 'scale') return Number.isInteger(value) && value >= 1 && value <= 5;
+  if (q.type === 'ox') return value === 'O' || value === 'X';
+  const filledChoice = v => isSavedChoice(q, v) && (!v.startsWith('기타:') || Boolean(v.slice(3).trim()));
+  if (q.type === 'multi') return Array.isArray(value) && value.length >= q.min && value.length <= q.max && value.every(filledChoice);
+  return filledChoice(value);
+}
+
+function restoreDraft(){
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return -1;
+    const draft = JSON.parse(raw);
+    if (!draft || draft.version !== 1 || !Number.isFinite(draft.savedAt) ||
+        Date.now() - draft.savedAt < 0 || Date.now() - draft.savedAt >= DRAFT_TTL ||
+        !draft.answers || typeof draft.answers !== 'object') {
+      removeDraft(); return -1;
+    }
+    const target = draft.step === 'intro' ? -1 : FLOW.findIndex(q => q.id === draft.step);
+    if (target < 0 && draft.step !== 'intro') { removeDraft(); return -1; }
+    // Only restore known fields/options; stale or malformed drafts must not skip required questions.
+    FLOW.forEach(q => {
+      const value = draft.answers[q.id];
+      if (q.type === 'text' && typeof value === 'string') answers[q.id] = value;
+      if (q.type === 'scale' && Number.isInteger(value) && value >= 1 && value <= 5) answers[q.id] = value;
+      if (q.type === 'ox' && (value === 'O' || value === 'X')) answers[q.id] = value;
+      if ((q.type === 'choice' || q.type === 'select') && isSavedChoice(q, value)) answers[q.id] = value;
+      if (q.type === 'multi' && Array.isArray(value)) {
+        answers[q.id] = [...new Set(value.filter(v => isSavedChoice(q, v)))].slice(0, q.max);
+      }
+      if (q.detailId) {
+        if (answers[q.id] && typeof draft.answers[q.detailId] === 'string') answers[q.detailId] = draft.answers[q.detailId];
+        const saved = draft.reasonDrafts && draft.reasonDrafts[q.id];
+        if (saved && typeof saved === 'object') {
+          reasonDrafts[q.id] = {};
+          [...q.options, '__etc'].forEach(key => {
+            if (typeof saved[key] === 'string') reasonDrafts[q.id][key] = saved[key];
+          });
+        }
+      }
+    });
+    if (typeof draft.submissionId === 'string' && /^[a-zA-Z0-9-]{1,160}$/.test(draft.submissionId)) submissionId = draft.submissionId;
+    const missing = FLOW.findIndex((q, index) => index < target && !isAnswered(q));
+    return missing < 0 ? target : missing;
+  } catch (_) {
+    removeDraft(); clearAnswers(); return -1;
+  }
+}
+
+function restartSurvey(){
+  if (submitting || !confirm('작성 중인 답변을 지우고 처음부터 다시 시작할까요?')) return;
+  if (!removeDraft()) {
+    alert('임시 저장 내용을 삭제하지 못했어요. 브라우저의 사이트 데이터 설정을 확인해주세요.');
+    return;
+  }
+  clearAnswers();
+  completed = false;
+  $draftWarning.hidden = true;
+  go(-1);
+}
 
 function el(tag, cls, html){ const e=document.createElement(tag); if(cls)e.className=cls; if(html!=null)e.innerHTML=html; return e; }
 
@@ -186,6 +308,8 @@ function go(i){
   $screen.innerHTML = '';
   $screen.style.animation='none'; void $screen.offsetWidth; $screen.style.animation='';
   $back.style.visibility = (idx >= 0 && idx < FLOW.length) ? 'visible' : 'hidden';
+  $restart.hidden = completed || (idx < 0 && !Object.keys(answers).length) || idx >= FLOW.length;
+  $restart.disabled = submitting;
   if (idx === -1) { $bar.style.width='0%'; $count.textContent=''; renderIntro(); }
   else if (idx >= FLOW.length) { $bar.style.width='100%'; $count.textContent=''; renderDone(); }
   else {
@@ -197,6 +321,7 @@ function go(i){
     renderQuestion(item);
   }
   window.scrollTo(0,0);
+  saveDraft();
 }
 
 function renderIntro(){
@@ -212,6 +337,7 @@ function renderIntro(){
   $screen.append(
     pv,
     el('p','meta','작성에는 약 5~10분 정도 소요되며, 언제든 원하시는 만큼만 답변하셔도 괜찮습니다.'),
+    el('p','meta','작성 중인 답변은 이 브라우저에 임시 저장되어 24시간 이내에 이어서 작성할 수 있어요. 제출하거나 ‘처음부터’를 선택하면 삭제돼요. 공용 기기에서는 작성 후 임시 저장 내용을 지워주세요.'),
     el('p','lead','마지막까지 함께 해 주셔서 감사드립니다.<br>앞으로의 여정을 진심으로 응원하겠습니다.'),
     el('div','spacer')
   );
@@ -499,9 +625,19 @@ function submit(){
   submitting = true;
   if (!submissionId) submissionId = typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID() : 'survey-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  saveDraft();
   const payload = buildSubmissionPayload(answers, submissionId);
   document.querySelectorAll('button').forEach(button => { button.disabled = true; });
-  const finish = () => { submitting = false; $back.disabled = false; go(FLOW.length); };
+  const finish = () => {
+    completed = true;
+    submitting = false;
+    $back.disabled = false;
+    const removed = removeDraft();
+    clearAnswers();
+    go(FLOW.length);
+    $draftWarning.hidden = removed;
+    if (!removed) $draftWarning.textContent = '응답은 제출되었지만 임시 저장 내용을 삭제하지 못했어요. 공용 기기에서는 브라우저의 사이트 데이터를 지워주세요.';
+  };
   const fail = () => {
     submitting = false;
     $back.disabled = false;
@@ -545,7 +681,7 @@ function renderDone(){
   $screen.append(d);
 }
 
-go(-1);
+go(restoreDraft());
 </script>
 </body>
 </html>
