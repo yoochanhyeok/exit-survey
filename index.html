@@ -198,6 +198,15 @@ let submissionId = '';
 const DRAFT_KEY = 'kiwoom-exit-survey:draft';
 const DRAFT_TTL = 24 * 60 * 60 * 1000;
 let completed = false;
+let collectionAccepted = false;
+let resumeStep = null;
+let remoteRevision = 0;
+let remoteFingerprint = '';
+let remotePending = null;
+let remoteTimer = null;
+let remoteBusy = false;
+let remoteReady = false;
+let remoteCheck = null;
 
 const $screen = document.getElementById('screen');
 const $bar = document.getElementById('bar');
@@ -212,10 +221,11 @@ document.getElementById('cancelRestartBtn').addEventListener('click', () => $res
 document.getElementById('confirmRestartBtn').addEventListener('click', restartSurvey);
 // Save after each field's own handler has updated its answer, including before Next.
 ['input','change','click'].forEach(event => $screen.addEventListener(event, saveDraft));
-window.addEventListener('pagehide', saveDraft);
+window.addEventListener('pagehide', () => { saveDraft(); flushDraftOnExit(); });
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') saveDraft();
+  if (document.visibilityState === 'hidden') { saveDraft(); flushDraftOnExit(); }
 });
+window.addEventListener('online', () => { if (remotePending) sendRemoteDraft(); });
 window.addEventListener('pageshow', event => {
   if (event.persisted && !submitting && !completed) {
     clearAnswers();
@@ -230,6 +240,7 @@ window.addEventListener('storage', event => {
 });
 
 function clearAnswers(){
+  resetRemoteDraft();
   Object.keys(answers).forEach(key => delete answers[key]);
   Object.keys(reasonDrafts).forEach(key => delete reasonDrafts[key]);
   submissionId = '';
@@ -242,10 +253,11 @@ function removeDraft(){
 
 function saveDraft(){
   if (completed || idx >= FLOW.length || (idx < 0 && !Object.keys(answers).length)) return;
+  if (collectionAccepted && !submitting) queueRemoteDraft();
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
-      version:1, savedAt:Date.now(), step:idx < 0 ? 'intro' : FLOW[idx].id,
-      answers, reasonDrafts, submissionId
+      version:1, savedAt:Date.now(), step:resumeStep !== null ? FLOW[resumeStep].id : (idx < 0 ? 'intro' : FLOW[idx].id),
+      answers, reasonDrafts, submissionId, collectionAccepted, remoteRevision
     }));
     $draftWarning.hidden = true;
   } catch (_) { $draftWarning.hidden = false; }
@@ -300,14 +312,34 @@ function restoreDraft(){
     });
     if (typeof draft.submissionId === 'string' && /^[a-zA-Z0-9-]{1,160}$/.test(draft.submissionId)) submissionId = draft.submissionId;
     const missing = FLOW.findIndex((q, index) => index < target && !isAnswered(q));
-    return missing < 0 ? target : missing;
+    const restoredStep = missing < 0 ? target : missing;
+    collectionAccepted = draft.collectionAccepted === true;
+    remoteRevision = Number.isSafeInteger(draft.remoteRevision) ? draft.remoteRevision : 0;
+    if (!collectionAccepted && restoredStep >= 0) { resumeStep = restoredStep; return -1; }
+    return restoredStep;
   } catch (_) {
     removeDraft(); clearAnswers(); return -1;
   }
 }
 
-function restartSurvey(){
+async function restartSurvey(){
   if (submitting) return;
+  if (collectionAccepted && submissionId) {
+    submitting = true;
+    clearTimeout(remoteTimer);
+    remoteTimer = null;
+    try {
+      if (!await checkDraftSupport()) throw new Error('draft_unavailable');
+      const result = await postDraft({action:'discardDraft', responseId:submissionId, revision:Math.max(Date.now(), remoteRevision + 1)});
+      if (result.status !== 'discarded' && result.status !== 'submitted') throw new Error('discard_failed');
+    } catch (_) {
+      submitting = false;
+      $restartDialog.close();
+      showSaveStatus('삭제를 확인하지 못했어요. 인터넷 연결 후 다시 시도해주세요.');
+      return;
+    }
+    submitting = false;
+  }
   $restartDialog.close();
   if (!removeDraft()) {
     alert('임시 저장 내용을 삭제하지 못했어요. 브라우저의 사이트 데이터 설정을 확인해주세요.');
@@ -354,12 +386,18 @@ function renderIntro(){
   pv.append(el('p',null,'응답은 익명으로 수집되며, 통계 용도로만 활용할 예정입니다.<br><br>편하게 응답해주시면 감사하겠습니다.'));
   $screen.append(
     pv,
+    el('p','meta','설문을 시작하면 제출 전 작성 중인 답변도 저장되며, 통계 및 설문 개선에 활용됩니다.'),
     el('p','meta','작성에는 약 5~10분 정도 소요되며, 언제든 원하시는 만큼만 답변하셔도 괜찮습니다.'),
     el('p','lead','마지막까지 함께 해 주셔서 감사드립니다.<br>앞으로의 여정을 진심으로 응원하겠습니다.'),
     el('div','spacer')
   );
-  const b = el('button','btn','시작하기');
-  b.addEventListener('click', () => go(0));
+  const b = el('button','btn',resumeStep === null ? '시작하기' : '이어서 작성하기');
+  b.addEventListener('click', () => {
+    collectionAccepted = true;
+    const step = resumeStep === null ? 0 : resumeStep;
+    resumeStep = null;
+    go(step);
+  });
   $screen.append(b);
 }
 
@@ -616,6 +654,111 @@ function renderOX(q){
 // 응답 접수 주소 (Apps Script 웹 앱). 응답은 구글 시트 '응답' 탭에 저장됩니다.
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyu1Tp4B8fdQwP2IK-ueGZ0xsR5LPSJrC-u2cYvTjcDnM7V1Y3nBa-yH7ZUOrnvWBi8nw/exec';
 
+function showSaveStatus(message){
+  let status = document.getElementById('saveStatus');
+  if (!status) {
+    status = el('p','meta'); status.id = 'saveStatus'; status.setAttribute('role','status');
+    $screen.before(status);
+  }
+  status.textContent = message;
+  status.hidden = !message;
+}
+
+function resetRemoteDraft(){
+  clearTimeout(remoteTimer);
+  remoteTimer = null;
+  remotePending = null;
+  remoteFingerprint = '';
+  remoteRevision = 0;
+  collectionAccepted = false;
+  resumeStep = null;
+  showSaveStatus('');
+}
+
+function queueRemoteDraft(){
+  if (!collectionAccepted || completed || submitting || !Object.values(answers).some(v => Array.isArray(v) ? v.length : Boolean(v))) return;
+  const step = idx < 0 ? '도입부' : FLOW[idx].step + ' / ' + FLOW[idx].id;
+  const fingerprint = JSON.stringify({answers, step});
+  if (fingerprint !== remoteFingerprint) {
+    if (!submissionId) submissionId = typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID() : 'survey-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    remoteRevision = Math.max(Date.now(), remoteRevision + 1);
+    remoteFingerprint = fingerprint;
+    remotePending = {action:'saveDraft', responseId:submissionId, revision:remoteRevision, step,
+      answers:{...JSON.parse(JSON.stringify(answers)), surveyVersion:'2.1'}};
+    showSaveStatus('작성 내용 저장 중…');
+  }
+  if (remotePending && !remoteTimer && !remoteBusy) remoteTimer = setTimeout(sendRemoteDraft, 1500);
+}
+
+async function checkDraftSupport(){
+  if (remoteReady) return true;
+  if (!remoteCheck) remoteCheck = (async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(ENDPOINT, {signal:controller.signal, cache:'no-store'});
+      const result = response.ok && await response.json();
+      remoteReady = Boolean(result && result.ok && result.draftProtocol === 1);
+      return remoteReady;
+    } catch (_) { return false; }
+    finally { clearTimeout(timeout); remoteCheck = null; }
+  })();
+  return remoteCheck;
+}
+
+async function postDraft(payload){
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(ENDPOINT, {method:'POST', signal:controller.signal,
+      headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(payload)});
+    const result = response.ok && await response.json();
+    if (!result || !result.ok || result.draftProtocol !== 1 || result.responseId !== payload.responseId) throw new Error('draft_save_failed');
+    return result;
+  } finally { clearTimeout(timeout); }
+}
+
+async function sendRemoteDraft(){
+  clearTimeout(remoteTimer); remoteTimer = null;
+  if (remoteBusy || !remotePending || !collectionAccepted || submitting || completed) return;
+  remoteBusy = true;
+  const payload = remotePending;
+  let failed = false;
+  try {
+    // Never send draft requests to a legacy deployment that treats every POST as final.
+    if (!await checkDraftSupport()) throw new Error('draft_unavailable');
+    if (payload.responseId !== submissionId || submitting || completed) return;
+    const result = await postDraft(payload);
+    if (payload.responseId !== submissionId || submitting || completed) return;
+    if (result.status === 'submitted' || result.status === 'discarded') {
+      removeDraft(); clearAnswers(); go(-1);
+      showSaveStatus(result.status === 'submitted' ? '다른 화면에서 제출이 완료된 응답이에요.' : '처음부터 다시 시작한 응답이에요.');
+      return;
+    }
+    if (!['draft','stale','empty'].includes(result.status)) throw new Error('draft_save_failed');
+    if (remotePending && remotePending.revision === payload.revision) {
+      remotePending = null;
+      showSaveStatus('작성 내용 저장됨');
+    }
+  } catch (_) {
+    failed = true;
+    if (payload.responseId === submissionId && !completed && !submitting) showSaveStatus('연결 후 작성 내용을 다시 저장할게요.');
+  } finally {
+    remoteBusy = false;
+    if (remotePending && collectionAccepted && !submitting && !completed && !remoteTimer) {
+      remoteTimer = setTimeout(sendRemoteDraft, failed ? 15000 : 1500);
+    }
+  }
+}
+
+function flushDraftOnExit(){
+  if (!remoteReady || !remotePending || !collectionAccepted || submitting || completed) return;
+  try {
+    navigator.sendBeacon(ENDPOINT, new Blob([JSON.stringify(remotePending)], {type:'text/plain;charset=utf-8'}));
+  } catch (_) { /* The local draft remains available for retry on the next visit. */ }
+}
+
 function buildSubmissionPayload(source, responseId){
   const payload = {...source, surveyVersion:'2.1', q8Original:source.q8 || ''};
   if (responseId) payload.responseId = responseId;
@@ -640,6 +783,7 @@ function buildSubmissionPayload(source, responseId){
 function submit(){
   if (submitting) return;
   submitting = true;
+  clearTimeout(remoteTimer); remoteTimer = null;
   if (!submissionId) submissionId = typeof crypto.randomUUID === 'function'
     ? crypto.randomUUID() : 'survey-' + Date.now() + '-' + Math.random().toString(36).slice(2);
   saveDraft();
