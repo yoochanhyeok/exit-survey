@@ -43,7 +43,7 @@
   h2{font-size:21px;font-weight:750;letter-spacing:0;line-height:1.4;text-wrap:pretty;margin-bottom:6px}
   h1,h2,.lead,.hint,.privacy p,.guide p,.opt span:first-child,.scalelab span,.done p{word-break:keep-all;overflow-wrap:break-word}
   .tipping-title{width:calc(100% + 24px);margin-left:-12px;margin-right:-12px;font-size:17px;line-height:1.5}
-  .title-line{display:block;white-space:nowrap}
+  .title-line{display:block;white-space:normal}
   .lead{font-size:15px;color:var(--ink);margin-bottom:18px}
   .hint{font-size:14px;color:var(--muted);margin-bottom:22px}
   .privacy{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 18px;display:flex;gap:12px;margin:8px 0 28px}
@@ -89,6 +89,7 @@
     width:100%;min-height:130px;font:inherit;font-size:16px;line-height:1.6;color:var(--ink);
     background:var(--card);border:1.5px solid var(--line);border-radius:14px;padding:15px 17px;
     resize:vertical;margin-top:16px;
+    word-break:keep-all;overflow-wrap:break-word;
   }
   textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
   .reason-detail{margin-top:0;min-height:110px}
