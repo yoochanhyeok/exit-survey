@@ -170,6 +170,8 @@ const QUESTION_TOTAL = FLOW.filter(item => item.type !== 'info').length;
 const answers = {};
 const reasonDrafts = {};
 let idx = -1;
+let submitting = false;
+let submissionId = '';
 
 const $screen = document.getElementById('screen');
 const $bar = document.getElementById('bar');
@@ -471,8 +473,9 @@ function renderOX(q){
 // 응답 접수 주소 (Apps Script 웹 앱). 응답은 구글 시트 '응답' 탭에 저장됩니다.
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyu1Tp4B8fdQwP2IK-ueGZ0xsR5LPSJrC-u2cYvTjcDnM7V1Y3nBa-yH7ZUOrnvWBi8nw/exec';
 
-function buildSubmissionPayload(source){
-  const payload = {...source, surveyVersion:'2.0', q8Original:source.q8 || ''};
+function buildSubmissionPayload(source, responseId){
+  const payload = {...source, surveyVersion:'2.1', q8Original:source.q8 || ''};
+  if (responseId) payload.responseId = responseId;
   const extra = {
     '퇴사 결정 요인 상세의견': source.q2Detail || '',
     '업무 프로세스 및 환경 개선 의견': source.qProcess || '',
@@ -492,11 +495,23 @@ function buildSubmissionPayload(source){
 }
 
 function submit(){
-  const payload = buildSubmissionPayload(answers);
+  if (submitting) return;
+  submitting = true;
+  if (!submissionId) submissionId = typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID() : 'survey-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+  const payload = buildSubmissionPayload(answers, submissionId);
+  document.querySelectorAll('button').forEach(button => { button.disabled = true; });
+  const finish = () => { submitting = false; $back.disabled = false; go(FLOW.length); };
+  const fail = () => {
+    submitting = false;
+    $back.disabled = false;
+    alert('제출 중 문제가 생겼어요. 인터넷 연결을 확인하고 한 번만 다시 시도해주세요.');
+    go(FLOW.length - 1);
+  };
   if (typeof google !== 'undefined' && google.script && google.script.run) {
     google.script.run
-      .withSuccessHandler(() => go(FLOW.length))
-      .withFailureHandler(() => { alert('제출 중 문제가 생겼어요. 한 번만 다시 시도해주세요.'); go(FLOW.length - 1); })
+      .withSuccessHandler(finish)
+      .withFailureHandler(fail)
       .submitResponse(payload);
     return;
   }
@@ -512,12 +527,12 @@ function submit(){
       })
       .then(result => {
         if (!result || !result.ok) throw new Error('save_failed');
-        go(FLOW.length);
+        finish();
       })
-      .catch(() => { alert('제출 중 문제가 생겼어요. 인터넷 연결을 확인하고 한 번만 다시 시도해주세요.'); go(FLOW.length - 1); });
+      .catch(fail);
     return;
   }
-  setTimeout(() => go(FLOW.length), 400);
+  fail();
 }
 
 function renderDone(){
