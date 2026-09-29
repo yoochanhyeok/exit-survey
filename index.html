@@ -91,6 +91,7 @@
     resize:vertical;margin-top:16px;
   }
   textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+  .reason-detail{margin-top:0;min-height:110px}
   .oxrow{display:flex;gap:12px;margin-top:20px}
   .oxcard{
     flex:1;background:var(--card);border:1.5px solid var(--line);border-radius:18px;
@@ -136,12 +137,12 @@
 <script>
 const FLOW = [
   {id:'pos', step:'1단계 · 기본 정보', title:'재직 당시 마지막 직위는 무엇이었나요?', type:'select',
-   options:['사원','주임','대리','과장','차장','부장','임원']},
+   options:['사원','주임','대리','과장','차장','부장']},
   {id:'ten', step:'1단계 · 기본 정보', title:'회사에 재직한 기간은 얼마나 되었나요?', type:'choice',
    options:['3년 미만','3년~5년','5년 이상']},
   {id:'q1', step:'1단계 · 기본 정보', title:'퇴사 후에는 어떤 계획을 갖고 계세요?', type:'choice',
-   options:['이직','학업','창업','휴식'], etc:true},
-  {id:'q2', step:'1단계 · 기본 정보', titleClass:'tipping-title', title:'<span class="title-line">퇴사를 결정하는 과정에서 여러 이유가</span><span class="title-line">있었겠지만, 최종 마음을 굳히는 데</span><span class="title-line">가장 크게 작용한 한 가지는 무엇이었나요?</span>', type:'choice',
+   options:['이직','학업','창업','휴식','개인 사유'], etc:true},
+  {id:'q2', step:'1단계 · 기본 정보', titleClass:'tipping-title', title:'<span class="title-line">퇴사를 결심하는 과정에서 여러 이유가</span><span class="title-line">있었겠지만, 최종 마음을 굳히는 데</span><span class="title-line">가장 크게 작용한 한 가지는 무엇이었나요?</span>', type:'choice', detailId:'q2Detail',
    options:['보상','직무','커리어','워라밸','관리자','문화'], etc:true},
   {id:'experience_intro', step:'2단계 다음 화면 안내', title:'이제 회사에서 일하셨던 경험을 여쭤보려 합니다.', type:'info',
    body:['다음 문항은 일하는 동안 어떤 경험이 퇴사 결정에 영향을 주었는지 더 정확히 이해하기 위한 질문이에요.','재직 기간 동안 전반적인 느낌과 가장 가까운 점수를 선택해주세요.']},
@@ -149,18 +150,22 @@ const FLOW = [
   {id:'q4', step:'2단계 · 회사생활 경험', title:'업무 과정에서 관리자가 내 의견과 노력을 존중하고 있다고 느꼈나요?', type:'scale'},
   {id:'q5', step:'2단계 · 회사생활 경험', title:'주어진 업무량과 일하는 방식은 건강과 일상을 해치지 않고 지속할 수 있는 수준이었나요?', type:'scale'},
   {id:'q6', step:'2단계 · 회사생활 경험', title:'퇴사를 결정하기 전, 회사가 아래와 같은 변화를 제안하거나 실제로 지원했다면 퇴사를 다시 고민해볼 가능성이 있었던 항목은 무엇인가요?',
-   hint:'2개를 선택해주세요.', type:'multi', min:2, max:2,
+   hint:'최대 2개까지 선택해주세요.', type:'multi', min:1, max:2,
    options:['보상 및 복리후생','커리어 성장 기회','업무량 및 방식 조정','동료 및 관리자 관계 개선','조직 문화 변화'], etc:true,
    // 기존 응답 및 대시보드와의 집계를 위해 저장값은 유지하고 표시 문구만 변경합니다.
-   optionLabels:{'동료 및 관리자 관계 개선':'관리자 및 동료 관계 개선'}},
+   optionLabels:{'동료 및 관리자 관계 개선':'관리자 및 동료와 관계 개선'}},
   {id:'freeform_intro', step:'3단계 다음 화면 안내', title:'회사에서 겪은 경험과 앞으로 개선되었으면 하는 점을 편하게 들려주세요.', type:'info',
-   body:['다음 두 질문에서는 재직 중 아쉽거나 힘들었던 점과 회사가 먼저 바꾸었으면 하는 점을 여쭤볼게요.']},
+   body:['다음 질문에서는 조금 더 자세한 내용을 여쭤볼게요 객관적이고 솔직하게 답변해주세요']},
   {id:'q7', step:'3단계 · 자유의견', title:'재직 기간 동안 가장 아쉽거나 힘들었던 점은 무엇이었나요?', type:'text'},
-  {id:'q8', step:'3단계 · 자유의견', title:'회사가 가장 먼저 바꿔야 할 한 가지는 무엇이라고 생각하시나요?', type:'text'},
+  {id:'qProcess', step:'3단계 · 자유의견', title:'담당했던 업무 프로세스나 환경을 개선하기 위해 필요한 변화는 무엇인가요?', type:'text'},
+  {id:'qTeam', step:'3단계 · 자유의견', title:'근무하셨던 팀(조직)이 더 발전하기 위해 꼭 필요한 변화는 무엇이라고 생각하시나요?', type:'text'},
+  {id:'qCultureText', step:'3단계 · 자유의견', title:'키움증권의 조직 문화를 한 문장(또는 키워드)으로 표현해주신다면 무엇인가요?', type:'text'},
+  {id:'q8', step:'3단계 · 자유의견', title:'회사의 더 나은 미래를 위해 ‘가장 먼저 변화가 필요한 한 가지’는 무엇이라고 생각하시나요?', type:'text'},
   {id:'q9', step:'3단계 · 자유의견', title:'키움증권을 지인에게 추천하고 싶으신가요?', type:'ox'},
 ];
 const QUESTION_TOTAL = FLOW.filter(item => item.type !== 'info').length;
 const answers = {};
+const reasonDrafts = {};
 let idx = -1;
 
 const $screen = document.getElementById('screen');
@@ -201,7 +206,7 @@ function renderIntro(){
   pv.append(el('p',null,'응답은 익명으로 수집되며, 통계 용도로만 활용할 예정입니다.<br><br>편하게 응답해주시면 감사하겠습니다.'));
   $screen.append(
     pv,
-    el('p','meta','작성에는 약 5~8분 정도 소요되며, 언제든 원하시는 만큼만 답변하셔도 괜찮습니다.'),
+    el('p','meta','작성에는 약 5~10분 정도 소요되며, 언제든 원하시는 만큼만 답변하셔도 괜찮습니다.'),
     el('p','lead','마지막까지 함께 해 주셔서 감사드립니다.<br>앞으로의 여정을 진심으로 응원하겠습니다.'),
     el('div','spacer')
   );
@@ -215,6 +220,7 @@ function renderQuestion(q){
   if (q.hint) $screen.append(el('p','hint',q.hint));
   if (q.type==='info') renderInfo(q);
   else if (q.type==='select') renderSelect(q);
+  else if (q.type==='choice' && q.detailId) renderReasonChoice(q);
   else if (q.type==='choice') renderChoice(q);
   else if (q.type==='scale') renderScale(q);
   else if (q.type==='multi') renderMulti(q);
@@ -309,6 +315,53 @@ function renderChoice(q){
     }
     go(idx+1);
   }, '다음', !selected);
+  refresh();
+}
+
+function renderReasonChoice(q){
+  const box = el('div','opts');
+  const saved = answers[q.id] || '';
+  let selected = saved.indexOf('기타:') === 0 ? '__etc' : saved;
+  const drafts = reasonDrafts[q.id] || (reasonDrafts[q.id] = {});
+  if (selected && drafts[selected] === undefined) {
+    drafts[selected] = answers[q.detailId] || (selected === '__etc' ? saved.slice(3).trim() : '');
+  }
+  const detail = el('textarea','reason-detail');
+  detail.placeholder = '더 자세한 의견을 남겨주셔도 좋아요';
+  detail.setAttribute('aria-label','퇴사 결정 요인에 대한 자세한 의견');
+  detail.value = drafts[selected] || '';
+  let next = null;
+  const persist = () => {
+    if (!selected) return;
+    drafts[selected] = detail.value;
+    answers[q.id] = selected === '__etc' ? '기타: '+detail.value.trim() : selected;
+    answers[q.detailId] = detail.value.trim();
+  };
+  const refresh = () => {
+    box.querySelectorAll('.opt').forEach(button => {
+      const active = button.dataset.value === selected;
+      button.classList.toggle('on', active);
+      if (active && button.nextElementSibling !== detail) button.after(detail);
+    });
+    if (next) next.disabled = !selected || (selected === '__etc' && !detail.value.trim());
+    persist();
+  };
+  const addOption = (label, value=label) => {
+    const button = el('button','opt','<span>'+label+'</span><span class="mark"></span>');
+    button.dataset.value = value;
+    button.addEventListener('click', () => {
+      persist();
+      selected = value;
+      detail.value = drafts[selected] || '';
+      refresh();
+    });
+    box.append(button);
+  };
+  q.options.forEach(label => addOption(label));
+  if (q.etc) addOption('기타','__etc');
+  detail.addEventListener('input', refresh);
+  $screen.append(box);
+  next = appendNav(() => { persist(); go(idx+1); }, '다음', true);
   refresh();
 }
 
@@ -415,21 +468,49 @@ function renderOX(q){
 // 응답 접수 주소 (Apps Script 웹 앱). 응답은 구글 시트 '응답' 탭에 저장됩니다.
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyu1Tp4B8fdQwP2IK-ueGZ0xsR5LPSJrC-u2cYvTjcDnM7V1Y3nBa-yH7ZUOrnvWBi8nw/exec';
 
+function buildSubmissionPayload(source){
+  const payload = {...source, surveyVersion:'2.0', q8Original:source.q8 || ''};
+  const extra = {
+    '퇴사 결정 요인 상세의견': source.q2Detail || '',
+    '업무 프로세스 및 환경 개선 의견': source.qProcess || '',
+    '팀 및 조직 발전 의견': source.qTeam || '',
+    '조직 문화 표현': source.qCultureText || ''
+  };
+  // 기존 API는 A:L만 저장하므로 추가 답변을 K열에도 보존합니다.
+  // 새 API는 q8Original과 개별 필드를 사용해 각각의 열에 저장합니다.
+  if (Object.values(extra).some(value => value.trim())) {
+    payload.q8 = (payload.q8Original ? payload.q8Original+'\n\n' : '') +
+      '[추가 질문 응답 | 설문 v2.0]\n'+JSON.stringify(extra, null, 2);
+  }
+  Object.keys(payload).forEach(key => {
+    if (typeof payload[key] === 'string' && payload[key].startsWith('=')) payload[key] = "'"+payload[key];
+  });
+  return payload;
+}
+
 function submit(){
+  const payload = buildSubmissionPayload(answers);
   if (typeof google !== 'undefined' && google.script && google.script.run) {
     google.script.run
       .withSuccessHandler(() => go(FLOW.length))
       .withFailureHandler(() => { alert('제출 중 문제가 생겼어요. 한 번만 다시 시도해주세요.'); go(FLOW.length - 1); })
-      .submitResponse(answers);
+      .submitResponse(payload);
     return;
   }
   if (ENDPOINT) {
     fetch(ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify(answers)
+      body: JSON.stringify(payload)
     })
-      .then(() => go(FLOW.length))
+      .then(response => {
+        if (!response.ok) throw new Error('http_error');
+        return response.json();
+      })
+      .then(result => {
+        if (!result || !result.ok) throw new Error('save_failed');
+        go(FLOW.length);
+      })
       .catch(() => { alert('제출 중 문제가 생겼어요. 인터넷 연결을 확인하고 한 번만 다시 시도해주세요.'); go(FLOW.length - 1); });
     return;
   }
