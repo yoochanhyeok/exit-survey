@@ -44,6 +44,8 @@
   h1,h2,.lead,.hint,.privacy p,.guide p,.opt span:first-child,.scalelab span,.done p{word-break:keep-all;overflow-wrap:break-word}
   .tipping-title{width:calc(100% + 24px);margin-left:-12px;margin-right:-12px;font-size:17px;line-height:1.5}
   .title-line{display:block;white-space:normal}
+  .mobile-title-break{display:none}
+  @media (max-width:560px){.mobile-title-break{display:inline}}
   .lead{font-size:15px;color:var(--ink);margin-bottom:18px}
   .hint{font-size:14px;color:var(--muted);margin-bottom:22px}
   .privacy{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 18px;display:flex;gap:12px;margin:8px 0 28px}
@@ -158,10 +160,10 @@ const FLOW = [
   {id:'freeform_intro', step:'3단계 다음 화면 안내', title:'회사에서 겪은 경험과 앞으로 개선되었으면 하는 점을 편하게 들려주세요.', type:'info',
    body:['다음 질문에서는 조금 더 자세한 내용을 여쭤볼게요 객관적이고 솔직하게 답변해주세요']},
   {id:'q7', step:'3단계 · 자유의견', title:'재직 기간 동안 가장 아쉽거나 힘들었던 점은 무엇이었나요?', type:'text'},
-  {id:'qProcess', step:'3단계 · 자유의견', title:'담당했던 업무 프로세스나 환경을 개선하기 위해 필요한 변화는 무엇인가요?', type:'text'},
-  {id:'qTeam', step:'3단계 · 자유의견', title:'근무하셨던 팀(조직)이 더 발전하기 위해 꼭 필요한 변화는 무엇이라고 생각하시나요?', type:'text'},
-  {id:'qCultureText', step:'3단계 · 자유의견', title:'키움증권의 조직 문화를 한 문장(또는 키워드)으로 표현해주신다면 무엇인가요?', type:'text'},
-  {id:'q8', step:'3단계 · 자유의견', title:'회사의 더 나은 미래를 위해 ‘가장 먼저 변화가 필요한 한 가지’는 무엇이라고 생각하시나요?', type:'text'},
+  {id:'qProcess', step:'3단계 · 자유의견', title:'담당했던 업무 프로세스나 환경을 개선하기 위해 <br class="mobile-title-break">필요한 변화는 무엇인가요?', type:'text'},
+  {id:'qTeam', step:'3단계 · 자유의견', title:'근무하셨던 팀(조직)이 더 발전하기 위해 <br class="mobile-title-break">꼭 필요한 변화는 무엇이라고 생각하시나요?', type:'text'},
+  {id:'qCultureText', step:'3단계 · 자유의견', title:'키움증권의 조직 문화를 <br class="mobile-title-break">한 문장(또는 키워드)으로 <br class="mobile-title-break">표현해주신다면 무엇인가요?', type:'text'},
+  {id:'q8', step:'3단계 · 자유의견', title:'회사의 더 나은 미래를 위해 <br class="mobile-title-break">‘가장 먼저 변화가 필요한 한 가지’는 <br class="mobile-title-break">무엇이라고 생각하시나요?', type:'text'},
   {id:'q9', step:'3단계 · 자유의견', title:'키움증권을 지인에게 추천하고 싶으신가요?', type:'ox'},
 ];
 const QUESTION_TOTAL = FLOW.filter(item => item.type !== 'info').length;
