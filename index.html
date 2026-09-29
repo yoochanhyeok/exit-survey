@@ -39,6 +39,11 @@
   .restart:hover{color:var(--accent-deep)}
   .restart:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .draft-warning{font-size:13px;color:var(--danger);margin-bottom:16px;word-break:keep-all}
+  .restart-dialog{margin:auto;width:calc(100% - 44px);max-width:360px;border:1px solid var(--line);border-radius:8px;padding:24px;background:var(--card);color:var(--ink)}
+  .restart-dialog::backdrop{background:rgba(27,38,34,.35)}
+  .restart-dialog h2{font-size:18px;margin-bottom:12px}
+  .restart-dialog p{font-size:14px;word-break:keep-all;margin-bottom:24px}
+  .restart-dialog .btn{font-size:14px;padding:12px}
   .screen{flex:1;display:flex;flex-direction:column;padding-bottom:40px;animation:rise .35s cubic-bezier(.2,.7,.3,1)}
   @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
   @media (prefers-reduced-motion:reduce){.screen{animation:none}.progress i{transition:none}}
@@ -146,6 +151,15 @@
   <div id="screen" class="screen"></div>
 </div>
 
+<dialog class="restart-dialog" id="restartDialog" aria-labelledby="restartTitle">
+  <h2 id="restartTitle">처음부터 다시 시작할까요?</h2>
+  <p>작성 중인 답변과 임시 저장 내용이 삭제돼요.</p>
+  <div class="nav">
+    <button class="btn secondary" id="cancelRestartBtn" type="button" autofocus>취소</button>
+    <button class="btn" id="confirmRestartBtn" type="button">처음부터 시작</button>
+  </div>
+</dialog>
+
 <script>
 const FLOW = [
   {id:'pos', step:'1단계 · 기본 정보', title:'재직 당시 마지막 직위는 무엇이었나요?', type:'select',
@@ -191,8 +205,11 @@ const $count = document.getElementById('count');
 const $back = document.getElementById('backBtn');
 const $restart = document.getElementById('restartBtn');
 const $draftWarning = document.getElementById('draftWarning');
+const $restartDialog = document.getElementById('restartDialog');
 $back.addEventListener('click', () => go(idx - 1));
-$restart.addEventListener('click', restartSurvey);
+$restart.addEventListener('click', () => { if (!submitting) $restartDialog.showModal(); });
+document.getElementById('cancelRestartBtn').addEventListener('click', () => $restartDialog.close());
+document.getElementById('confirmRestartBtn').addEventListener('click', restartSurvey);
 // Save after each field's own handler has updated its answer, including before Next.
 ['input','change','click'].forEach(event => $screen.addEventListener(event, saveDraft));
 window.addEventListener('pagehide', saveDraft);
@@ -290,7 +307,8 @@ function restoreDraft(){
 }
 
 function restartSurvey(){
-  if (submitting || !confirm('작성 중인 답변을 지우고 처음부터 다시 시작할까요?')) return;
+  if (submitting) return;
+  $restartDialog.close();
   if (!removeDraft()) {
     alert('임시 저장 내용을 삭제하지 못했어요. 브라우저의 사이트 데이터 설정을 확인해주세요.');
     return;
@@ -627,7 +645,7 @@ function submit(){
     ? crypto.randomUUID() : 'survey-' + Date.now() + '-' + Math.random().toString(36).slice(2);
   saveDraft();
   const payload = buildSubmissionPayload(answers, submissionId);
-  document.querySelectorAll('button').forEach(button => { button.disabled = true; });
+  document.querySelectorAll('#screen button, #backBtn, #restartBtn').forEach(button => { button.disabled = true; });
   const finish = () => {
     completed = true;
     submitting = false;
