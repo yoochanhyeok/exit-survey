@@ -442,7 +442,7 @@ function renderMulti(q){
 }
 
 function renderText(q){
-  const ta = el('textarea'); ta.placeholder='편하게 적어주세요.';
+  const ta = el('textarea'); ta.placeholder='주관식';
   ta.value = answers[q.id] || '';
   ta.addEventListener('input', () => { answers[q.id]=ta.value; });
   $screen.append(ta);
@@ -523,7 +523,7 @@ function renderDone(){
   d.append(
     el('div','ring','<svg width="30" height="30" viewBox="0 0 30 30" fill="none"><path d="M6 15.5 12.5 22 24 9" stroke="#2E6B5A" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'),
     el('h2',null,'제출되었어요'),
-    el('p',null,'귀한 시간을 내어 솔직한 이야기 들려주셔서 감사합니다.<br>남겨 주신 의견은 더 나은 회사를 만드는 데 <span class="closing-phrase">소중히 활용하겠습니다.</span>'),
+    el('p',null,'귀한 시간을 내어 솔직한 이야기를 들려주셔서 감사합니다.<br>남겨 주신 의견은 더 나은 회사를 만드는 데 <span class="closing-phrase">소중히 활용하겠습니다.</span>'),
   );
   $screen.append(d);
 }
