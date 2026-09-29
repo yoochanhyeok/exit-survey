@@ -427,7 +427,7 @@ function renderChoice(q){
   let next = null;
   const refresh = () => {
     box.querySelectorAll('.opt').forEach(b => b.classList.toggle('on', b.dataset.value === selected));
-    if (next) next.disabled = !selected;
+    if (next) next.disabled = !selected || (selected === '__etc' && !etcInput.value.trim());
   };
   const mk = (label, value=label) => {
     const b=el('button','opt','<span>'+label+'</span><span class="mark"></span>');
@@ -452,7 +452,7 @@ function renderChoice(q){
     b.addEventListener('click', () => {
       selected='__etc'; answers[q.id]='기타: '+inp.value.trim(); row.style.display='flex'; inp.focus(); refresh();
     });
-    inp.addEventListener('input', () => { answers[q.id]='기타: '+inp.value.trim(); });
+    inp.addEventListener('input', () => { answers[q.id]='기타: '+inp.value.trim(); refresh(); });
   }
   $screen.append(box);
   next = appendNav(() => {
