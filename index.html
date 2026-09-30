@@ -253,7 +253,7 @@ function removeDraft(){
 }
 
 function saveDraft(){
-  if (completed || idx >= FLOW.length || resumeStep !== null || !hasDraftAnswers()) return;
+  if (completed || idx >= FLOW.length || (idx < 0 && !Object.keys(answers).length)) return;
   if (collectionAccepted && !submitting) queueRemoteDraft();
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
@@ -262,11 +262,6 @@ function saveDraft(){
     }));
     $draftWarning.hidden = true;
   } catch (_) { $draftWarning.hidden = false; }
-}
-
-function hasDraftAnswers(){
-  return Object.values(answers).some(value => Array.isArray(value) ? value.length > 0
-    : typeof value === 'string' ? Boolean(value.trim()) : Number.isFinite(value));
 }
 
 function isSavedChoice(q, value){
@@ -316,15 +311,13 @@ function restoreDraft(){
         }
       }
     });
-    if (!hasDraftAnswers()) { removeDraft(); clearAnswers(); return -1; }
     if (typeof draft.submissionId === 'string' && /^[a-zA-Z0-9-]{1,160}$/.test(draft.submissionId)) submissionId = draft.submissionId;
     const missing = FLOW.findIndex((q, index) => index < target && !isAnswered(q));
-    const restoredStep = Math.max(0, missing < 0 ? target : missing);
+    const restoredStep = missing < 0 ? target : missing;
     collectionAccepted = draft.collectionAccepted === true;
     remoteRevision = Number.isSafeInteger(draft.remoteRevision) ? draft.remoteRevision : 0;
-    // Opening a link always shows the introduction; resuming is an explicit choice.
-    resumeStep = restoredStep;
-    return -1;
+    if (!collectionAccepted && restoredStep >= 0) { resumeStep = restoredStep; return -1; }
+    return restoredStep;
   } catch (_) {
     removeDraft(); clearAnswers(); return -1;
   }
@@ -683,7 +676,7 @@ function resetRemoteDraft(){
 }
 
 function queueRemoteDraft(){
-  if (!collectionAccepted || resumeStep !== null || completed || submitting || !Object.values(answers).some(v => Array.isArray(v) ? v.length : Boolean(v))) return;
+  if (!collectionAccepted || completed || submitting || !Object.values(answers).some(v => Array.isArray(v) ? v.length : Boolean(v))) return;
   const step = idx < 0 ? '도입부' : FLOW[idx].step + ' / ' + FLOW[idx].id;
   const fingerprint = JSON.stringify({answers, step});
   if (fingerprint !== remoteFingerprint) {
