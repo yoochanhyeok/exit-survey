@@ -198,7 +198,9 @@ let submitting = false;
 let submissionId = '';
 const DRAFT_KEY = 'kiwoom-exit-survey:draft';
 const DRAFT_TTL = 24 * 60 * 60 * 1000;
+const COMPLETED_KEY = 'kiwoom-exit-survey:completed';
 let completed = false;
+let previouslyCompleted = false;
 let collectionAccepted = false;
 let resumeStep = null;
 let remoteRevision = 0;
@@ -217,7 +219,7 @@ const $restart = document.getElementById('restartBtn');
 const $draftWarning = document.getElementById('draftWarning');
 const $restartDialog = document.getElementById('restartDialog');
 $back.addEventListener('click', () => go(idx - 1));
-$restart.addEventListener('click', () => { if (!submitting) $restartDialog.showModal(); });
+$restart.addEventListener('click', () => { if (!blockCompletedVisit() && !submitting) $restartDialog.showModal(); });
 document.getElementById('cancelRestartBtn').addEventListener('click', () => $restartDialog.close());
 document.getElementById('confirmRestartBtn').addEventListener('click', restartSurvey);
 // Save after each field's own handler has updated its answer, including before Next.
@@ -225,15 +227,18 @@ document.getElementById('confirmRestartBtn').addEventListener('click', restartSu
 window.addEventListener('pagehide', () => { saveDraft(); flushDraftOnExit(); });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') { saveDraft(); flushDraftOnExit(); }
+  else if (!completed) blockCompletedVisit();
 });
 window.addEventListener('online', () => { if (remotePending) sendRemoteDraft(); });
 window.addEventListener('pageshow', event => {
+  if (event.persisted && blockCompletedVisit()) return;
   if (event.persisted && !submitting && !completed) {
     clearAnswers();
     go(restoreDraft());
   }
 });
 window.addEventListener('storage', event => {
+  if (event.key === COMPLETED_KEY && event.newValue === '1') { showCompletedSubmission(true); return; }
   if (event.key === DRAFT_KEY && event.newValue === null && !submitting && !completed) {
     clearAnswers();
     go(-1);
@@ -252,8 +257,37 @@ function removeDraft(){
   catch (_) { return false; }
 }
 
+function hasCompletedSubmission(){
+  if (completed) return true;
+  try { return localStorage.getItem(COMPLETED_KEY) === '1'; }
+  catch (_) { return false; }
+}
+
+function showCompletedSubmission(alreadySubmitted = false){
+  completed = true;
+  previouslyCompleted = alreadySubmitted;
+  submitting = false;
+  let recorded = false;
+  // Store only a completion flag, separately from the expiring draft and its answers.
+  try { localStorage.setItem(COMPLETED_KEY, '1'); recorded = true; } catch (_) {}
+  const removed = removeDraft();
+  clearAnswers();
+  $restartDialog.close();
+  $back.disabled = false;
+  go(FLOW.length);
+  $draftWarning.hidden = recorded && removed;
+  if (!removed) $draftWarning.textContent = '응답은 제출되었지만 임시 저장 내용을 삭제하지 못했어요. 공용 기기에서는 브라우저의 사이트 데이터를 지워주세요.';
+  else if (!recorded) $draftWarning.textContent = '응답은 정상적으로 제출되었지만, 이 브라우저에 제출 완료 기록을 남기지 못했어요.';
+}
+
+function blockCompletedVisit(){
+  if (!hasCompletedSubmission()) return false;
+  showCompletedSubmission(true);
+  return true;
+}
+
 function saveDraft(){
-  if (completed || idx >= FLOW.length || (idx < 0 && !Object.keys(answers).length)) return;
+  if (hasCompletedSubmission() || idx >= FLOW.length || (idx < 0 && !Object.keys(answers).length)) return;
   if (collectionAccepted && !submitting) queueRemoteDraft();
   try {
     localStorage.setItem(DRAFT_KEY, JSON.stringify({
@@ -279,6 +313,13 @@ function isAnswered(q){
 }
 
 function restoreDraft(){
+  if (hasCompletedSubmission()) {
+    completed = true;
+    previouslyCompleted = true;
+    clearAnswers();
+    removeDraft();
+    return FLOW.length;
+  }
   try {
     const raw = localStorage.getItem(DRAFT_KEY);
     if (!raw) return -1;
@@ -324,6 +365,7 @@ function restoreDraft(){
 }
 
 async function restartSurvey(){
+  if (blockCompletedVisit()) return;
   if (submitting) return;
   if (collectionAccepted && submissionId) {
     submitting = true;
@@ -332,6 +374,7 @@ async function restartSurvey(){
     try {
       if (!await checkDraftSupport()) throw new Error('draft_unavailable');
       const result = await postDraft({action:'discardDraft', responseId:submissionId, revision:Math.max(Date.now(), remoteRevision + 1)});
+      if (result.status === 'submitted') { showCompletedSubmission(true); return; }
       if (result.status !== 'discarded' && result.status !== 'submitted') throw new Error('discard_failed');
     } catch (_) {
       submitting = false;
@@ -341,6 +384,7 @@ async function restartSurvey(){
     }
     submitting = false;
   }
+  if (blockCompletedVisit()) return;
   $restartDialog.close();
   if (!removeDraft()) {
     alert('임시 저장 내용을 삭제하지 못했어요. 브라우저의 사이트 데이터 설정을 확인해주세요.');
@@ -355,6 +399,7 @@ async function restartSurvey(){
 function el(tag, cls, html){ const e=document.createElement(tag); if(cls)e.className=cls; if(html!=null)e.innerHTML=html; return e; }
 
 function go(i){
+  if (i < FLOW.length && blockCompletedVisit()) return;
   idx = i;
   $screen.innerHTML = '';
   $screen.style.animation='none'; void $screen.offsetWidth; $screen.style.animation='';
@@ -731,9 +776,10 @@ async function sendRemoteDraft(){
     if (payload.responseId !== submissionId || submitting || completed) return;
     const result = await postDraft(payload);
     if (payload.responseId !== submissionId || submitting || completed) return;
-    if (result.status === 'submitted' || result.status === 'discarded') {
+    if (result.status === 'submitted') { showCompletedSubmission(true); return; }
+    if (result.status === 'discarded') {
       removeDraft(); clearAnswers(); go(-1);
-      showSaveStatus(result.status === 'submitted' ? '다른 화면에서 제출이 완료된 응답이에요.' : '처음부터 다시 시작한 응답이에요.');
+      showSaveStatus('처음부터 다시 시작한 응답이에요.');
       return;
     }
     if (!['draft','stale','empty'].includes(result.status)) throw new Error('draft_save_failed');
@@ -781,6 +827,7 @@ function buildSubmissionPayload(source, responseId){
 }
 
 function submit(){
+  if (blockCompletedVisit()) return;
   if (submitting) return;
   submitting = true;
   clearTimeout(remoteTimer); remoteTimer = null;
@@ -789,17 +836,9 @@ function submit(){
   saveDraft();
   const payload = buildSubmissionPayload(answers, submissionId);
   document.querySelectorAll('#screen button, #backBtn, #restartBtn').forEach(button => { button.disabled = true; });
-  const finish = () => {
-    completed = true;
-    submitting = false;
-    $back.disabled = false;
-    const removed = removeDraft();
-    clearAnswers();
-    go(FLOW.length);
-    $draftWarning.hidden = removed;
-    if (!removed) $draftWarning.textContent = '응답은 제출되었지만 임시 저장 내용을 삭제하지 못했어요. 공용 기기에서는 브라우저의 사이트 데이터를 지워주세요.';
-  };
+  const finish = () => showCompletedSubmission();
   const fail = () => {
+    if (blockCompletedVisit()) return;
     submitting = false;
     $back.disabled = false;
     alert('제출 중 문제가 생겼어요. 인터넷 연결을 확인하고 한 번만 다시 시도해주세요.');
@@ -807,7 +846,7 @@ function submit(){
   };
   if (typeof google !== 'undefined' && google.script && google.script.run) {
     google.script.run
-      .withSuccessHandler(finish)
+      .withSuccessHandler(result => { if (result && result.ok) finish(); else fail(); })
       .withFailureHandler(fail)
       .submitResponse(payload);
     return;
@@ -836,7 +875,7 @@ function renderDone(){
   const d = el('div','done');
   d.append(
     el('div','ring','<svg width="30" height="30" viewBox="0 0 30 30" fill="none"><path d="M6 15.5 12.5 22 24 9" stroke="#2E6B5A" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'),
-    el('h2',null,'제출되었어요'),
+    el('h2',null,previouslyCompleted ? '이미 제출이 완료되었습니다.' : '제출되었어요'),
     el('p',null,'귀한 시간을 내어 솔직한 이야기를 들려주셔서 감사합니다.<br>남겨 주신 의견은 더 나은 회사를 만드는 데 <span class="closing-phrase">소중히 활용하겠습니다.</span>'),
   );
   $screen.append(d);
